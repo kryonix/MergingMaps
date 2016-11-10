@@ -83,6 +83,20 @@ renderMap = intercalate "\n"
 showMaps :: [Tile] -> String
 showMaps = intercalate "\n\n" . map (renderMap . addBorder . toMap)
 
+
+-- | Convert the internal tile representation into a character map.
+toMap' :: Tile -> Map
+toMap' t = (show (tCols t) ++ " " ++ show (tRows t)):[ [ fromMaybe '-' (M.lookup c (tFeatures t))
+            | col <- [0..tCols t - 1]
+            , let c = C { cRow = row, cCol = col }
+            ]
+          | row <- [0..tRows t - 1]
+          ]
+
+-- | Render multiple tiles. Used for Data Generator (without border)
+showMapsPlain :: [Tile] -> String
+showMapsPlain = intercalate "\n" . map (renderMap . toMap')
+
 -------------------------------------------------------------------------------
 -- Algorithm
 
