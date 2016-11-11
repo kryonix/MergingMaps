@@ -4,10 +4,10 @@ import System.Random (StdGen, mkStdGen, random, randomR, newStdGen)
 import qualified Data.Map as M
 import MergingMaps
 
-myRand :: State StdGen Int
-myRand = do
+myRand :: Int -> State StdGen Int
+myRand x = do
     gen <- get
-    let (r, nextGen) = randomR (0, 5) gen
+    let (r, nextGen) = randomR (0, x-1) gen
     put nextGen
     return r
 
@@ -18,40 +18,31 @@ randomFeature = do
     put nextGen
     return r
 
-randomCoord :: State StdGen Coord
-randomCoord = do
-    x1 <- myRand
-    x2 <- myRand
+randomCoord :: Int -> Int -> State StdGen Coord
+randomCoord x y = do
+    x1 <- myRand x
+    x2 <- myRand y
     return (C x1 x2)
 
-randomTile :: State StdGen Tile
-randomTile = do
-    coords <- mapM (const randomCoord) $ replicate 5 ()
-    features <- mapM (const randomFeature) $ replicate 5 ()
-    let x = zip coords features
-    return (T 5 5 (M.fromList x))
+randomTile :: Int -> Int -> State StdGen Tile
+randomTile x y = do
+    coords <- mapM (const $ randomCoord x y) $ replicate x ()
+    features <- mapM (const randomFeature) $ replicate y ()
+    let m = zip coords features
+    return (T x y (M.fromList m))
 
-randomDataSet :: Int -> State StdGen [Tile]
-randomDataSet n = do
-    tiles <- mapM (const randomTile) $ replicate n ()
+randomDataSet :: Int -> Int -> Int -> State StdGen [Tile]
+randomDataSet n x y = do
+    tiles <- mapM (const (randomTile x y)) $ replicate n ()
     return tiles
 
 main = do
-    --let triple = unGen randomTriple (mkStdGen 1) 1
-    --let triple = randomTriple 
-    --print triple
-    --let values = mapM (const myRand) $ repeat ()
-    --let triple = evalState values $ mkStdGen 1
-    --print triple
-    --gen <- newStdGen
-    --let rndCoord = evalState randomCoord $ gen --mkStdGen 1
-    --print rndCoord
-    [numMaps] <- getArgs
+    [numMaps, x, y] <- getArgs
     let n = read numMaps :: Int
+    let x' = read x :: Int
+    let y' = read y :: Int
     gen <- newStdGen
-    let dataSet = evalState (randomDataSet n) $ gen
+    let dataSet = evalState (randomDataSet n x' y') $ gen
     putStrLn $ show n
     putStrLn $ showMapsPlain dataSet
     putStrLn "0"
-    --let tile = evalState randomTile $ gen
-    --putStrLn $ showMapsPlain [tile]
