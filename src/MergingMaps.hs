@@ -121,12 +121,10 @@ computeScore ta tb (O row col) = do
                y <- take (tCols tb-col) [col..]
                ]
 
-    --Koordinaten auf Feature Lookup mappen
-    let test' = map (\x -> (M.lookup x (tFeatures ta),
-                            M.lookup (C (cRow x-row) (cCol x-col)) (tFeatures tb))) test
+    test' <- mapM (\x -> checkOffset (M.lookup x (tFeatures ta),
+                               M.lookup (C (cRow x-row) (cCol x-col)) (tFeatures tb))) test
 
-    test'' <- mapM checkOffset test'
-    return (sum test'')
+    return (sum test')
 
 checkOffset :: (Maybe Feature, Maybe Feature) -> Maybe Int
 checkOffset (Just x, Just y)   | x == y = Just 1

@@ -20,7 +20,7 @@ mapHeader = do
     p <- many1 digit <* newline
     let maps = read p :: Int
     ma <- count maps singlemap
-    option () $ do {char '0'; eof}
+    option () $ do {char '0'; many newline; eof}
     return $ concat ma
 
 singlemap = do
@@ -41,6 +41,6 @@ main = do
             let converted = map (fmap fromRawTile) erg
             let result = map mergeTiles converted
             let printable = intercalate "\n"
-                                    ["Case "++show i++"\n"++x 
+                                    ["Case "++show i++"\n"++x
                                     | (x, i) <- zip (map showMaps result) [1..]]
             putStrLn printable
