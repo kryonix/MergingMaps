@@ -6,6 +6,8 @@ import Data.List.Extra(groupSort)
 import Data.Maybe
 import qualified Data.Map as M
 import Data.Ord
+import Debug.Trace
+import Control.Monad
 --------------------------------------------------------------------------------
 -- Data types
 
@@ -86,7 +88,7 @@ showMaps = intercalate "\n\n" . map (renderMap . addBorder . toMap)
 
 -- | Convert the internal tile representation into a character map.
 toMap' :: Tile -> Map
-toMap' t = (show (tCols t) ++ " " ++ show (tRows t)):[ [ fromMaybe '-' (M.lookup c (tFeatures t))
+toMap' t = (show (tRows t) ++ " " ++ show (tCols t)):[ [ fromMaybe '-' (M.lookup c (tFeatures t))
             | col <- [0..tCols t - 1]
             , let c = C { cRow = row, cCol = col }
             ]
@@ -111,20 +113,42 @@ possibleOffsets ta tb = [O x y | x <- xInt, y <- yInt]
       xInt = [-(min ta_rows tb_rows)..(max ta_rows tb_rows)]
       yInt = [-(min ta_cols tb_cols)..(max ta_cols tb_cols)]
 
+psum :: Maybe Int -> Maybe Int -> Maybe Int
+psum Nothing _ = Nothing
+psum _ Nothing = Nothing
+psum (Just x) (Just y) = x `seq` y `seq` Just $ x+y
+--psum _ _ = Nothing
+
 computeScore :: Tile -> Tile -> Offset -> Maybe Score
 computeScore ta tb (O row col) = do
     --Zu prüfenden Bereich generieren
     --Bereich auf Koordinaten Mappen
-    let test = [C x y
+{-    let test = [checkOffset (M.lookup (C x y) (tFeatures ta), M.lookup (C (x-row) (y-col)) (tFeatures tb))
                |
                x <- take (tRows tb-row) [row..],
                y <- take (tCols tb-col) [col..]
                ]
+-}
+--    let test = [C x y
+--               |
+--               x <- take (tRows tb-row) [row..],
+--               y <- take (tCols tb-col) [col..]
+--               ]
+--
+        -- return $ C x y
+    let tfa = tFeatures ta
+    let tfb = tFeatures tb
+    test' <- sum <$!> mapM (\ (x, y) -> checkOffset (M.lookup (C x y) tfa,
+                               M.lookup (C (x-row) (y-col)) tfb)) [(x, y)
+                                          |
+                                          x <- take (tRows tb-row) [row..],
+                                          y <- take (tCols tb-col) [col..]
+                                          ]
 
-    test' <- mapM (\x -> checkOffset (M.lookup x (tFeatures ta),
-                               M.lookup (C (cRow x-row) (cCol x-col)) (tFeatures tb))) test
-
-    return (sum test')
+    test' `seq` return test'
+--    foldr psum (Just 0) test
+    --let erg = sum test'
+    --erg `seq` return $! erg --(sum test')
 
 checkOffset :: (Maybe Feature, Maybe Feature) -> Maybe Int
 checkOffset (Just x, Just y)   | x == y = Just 1
@@ -137,14 +161,19 @@ bestOffsets ta tb = res
       --Alle offsets berechnen
       offsets = possibleOffsets ta tb
       --Scores filtern
-      scores  = filter (\(x,_) -> x /= Just 0) $
-                  filter (isJust . fst) $
-                     map (\x -> (,) (computeScore ta tb x) x) offsets
+      scores  = filter (\(x,_) -> isJust x && x /= Just 0) $
+                 map (\x -> (,) (computeScore ta tb x) x) offsets
 
+--      scores'' :: [(Score, Offset)]
+--      scores'' = [(fromJust $ computeScore ta tb e, e) | e <- possibleOffsets ta tb, isJust $ computeScore ta tb e]
+
+      --scoreCollected = sortAndGroup scores''
       scores' = map (\(Just x, y) -> (x, y)) scores
       scoreCollected = maximumBy (comparing fst) $ groupSort scores'
-      res | null scores = Nothing
+      res | null scores' = Nothing
           | otherwise = Just scoreCollected
+
+sortAndGroup assocs = M.fromListWith (++) [(k, [v]) | (k, v) <- assocs]
 
 bestOffset :: Tile -> Tile -> Maybe (Score, Offset)
 bestOffset ta tb = (\(x, y) -> (,) x (minimum y)) <$> bestOffsets ta tb
@@ -186,13 +215,13 @@ compareTest2 (s, (_,_,o)) (s2, (_,_,o2)) = compare (s, o) (s2, o2)--compareScore
 mergeTiles :: [Tile] -> [Tile]
 mergeTiles [] = []
 mergeTiles [t] = [t]
-mergeTiles ta | isNothing maxScore = ta
-              | null combMap  = ta
+mergeTiles ta | isNothing maxScore || null combMap = ta
               | otherwise = mergeTiles resMerge
    where
-      combinations = zip ta (drop 1 $ tails ta)  --All combinations to check
-      combMap = concatMap (uncurry bestMatchForTile) combinations  --Compute score
-      --Wählt das best mögliche Element aus mittels
-      --comparator compareTest2
+      -- Check all combinations left in list
+      combinations = zip ta (drop 1 $ tails ta)
+      -- Calculate best offset and score per combination
+      combMap = concatMap (uncurry bestMatchForTile) combinations
+      -- Choose element such that score is maximal and offset minimal
       maxScore = if null combMap then Nothing else Just $ maximumBy compareTest2 combMap
       resMerge = maybe [] (\(_, (tx, tb, o)) -> merge o tx tb : (ta \\ [tx, tb])) maxScore

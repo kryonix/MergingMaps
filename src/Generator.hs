@@ -26,7 +26,7 @@ randomCoord x y = do
 
 randomTile :: Int -> Int -> State StdGen Tile
 randomTile x y = do
-    coords <- mapM (const $ randomCoord x y) $ replicate x ()
+    coords <- mapM (const $ randomCoord y x) $ replicate x ()
     features <- mapM (const randomFeature) $ replicate y ()
     let m = zip coords features
     return (T x y (M.fromList m))
