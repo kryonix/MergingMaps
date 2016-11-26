@@ -4,10 +4,11 @@ module MergingMaps where
 import Data.List
 import Data.List.Extra(groupSort)
 import Data.Maybe
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import Data.Ord
 import Debug.Trace
 import Control.Monad
+import Data.Foldable
 --------------------------------------------------------------------------------
 -- Data types
 
@@ -103,15 +104,19 @@ showMapsPlain = intercalate "\n" . map (renderMap . toMap')
 -- Algorithm
 
 possibleOffsets :: Tile -> Tile -> [Offset]
-possibleOffsets ta tb = [O x y | x <- xInt, y <- yInt]
+possibleOffsets ta tb = res --[O x y | x <- xInt, y <- yInt]
    where
       ta_cols = tCols ta - 1
       ta_rows = tRows ta - 1
       tb_cols = tCols tb - 1
       tb_rows = tRows tb - 1
 
-      xInt = [-(min ta_rows tb_rows)..(max ta_rows tb_rows)]
-      yInt = [-(min ta_cols tb_cols)..(max ta_cols tb_cols)]
+      res = [O x y
+            | x <- [-(min ta_rows tb_rows)..(max ta_rows tb_rows)]
+            , y <- [-(min ta_cols tb_cols)..(max ta_cols tb_cols)]
+            ]
+      --xInt = [-(min ta_rows tb_rows)..(max ta_rows tb_rows)]
+      --yInt = [-(min ta_cols tb_cols)..(max ta_cols tb_cols)]
 
 psum :: Maybe Int -> Maybe Int -> Maybe Int
 psum Nothing _ = Nothing
@@ -119,36 +124,27 @@ psum _ Nothing = Nothing
 psum (Just x) (Just y) = x `seq` y `seq` Just $ x+y
 --psum _ _ = Nothing
 
+xsum :: Int -> Maybe Int -> Maybe Int
+xsum _ Nothing = Nothing
+xsum a (Just x) = Just (x+a)
+
 computeScore :: Tile -> Tile -> Offset -> Maybe Score
 computeScore ta tb (O row col) = do
     --Zu prüfenden Bereich generieren
     --Bereich auf Koordinaten Mappen
-{-    let test = [checkOffset (M.lookup (C x y) (tFeatures ta), M.lookup (C (x-row) (y-col)) (tFeatures tb))
-               |
-               x <- take (tRows tb-row) [row..],
-               y <- take (tCols tb-col) [col..]
-               ]
--}
---    let test = [C x y
---               |
---               x <- take (tRows tb-row) [row..],
---               y <- take (tCols tb-col) [col..]
---               ]
---
-        -- return $ C x y
     let tfa = tFeatures ta
     let tfb = tFeatures tb
-    test' <- sum <$!> mapM (\ (x, y) -> checkOffset (M.lookup (C x y) tfa,
-                               M.lookup (C (x-row) (y-col)) tfb)) [(x, y)
-                                          |
-                                          x <- take (tRows tb-row) [row..],
-                                          y <- take (tCols tb-col) [col..]
-                                          ]
-
-    test' `seq` return test'
---    foldr psum (Just 0) test
-    --let erg = sum test'
-    --erg `seq` return $! erg --(sum test')
+    foldM xsum 0 [check
+                 |
+                 x <- take (tRows tb-row) [row..],
+                 y <- take (tCols tb-col) [col..],
+                 let c1 = M.lookup (C x y) tfa,
+                 isJust c1,
+                 let c2 = M.lookup (C (x-row) (y-col)) tfb,
+                 isJust c2,
+                 let check = checkOffset (c1, c2),
+                 check /= Just 0
+                 ]
 
 checkOffset :: (Maybe Feature, Maybe Feature) -> Maybe Int
 checkOffset (Just x, Just y)   | x == y = Just 1
@@ -158,25 +154,18 @@ checkOffset _ = Just 0
 bestOffsets :: Tile -> Tile -> Maybe (Score, [Offset])
 bestOffsets ta tb = res
    where
-      --Alle offsets berechnen
-      offsets = possibleOffsets ta tb
-      --Scores filtern
-      scores  = filter (\(x,_) -> isJust x && x /= Just 0) $
-                 map (\x -> (,) (computeScore ta tb x) x) offsets
+      scores = [(a, x)
+               | x <- possibleOffsets ta tb    -- Calculate all offsets
+               , let p = computeScore ta tb x  -- Compute score
+               , isJust p && p /= Just 0       -- Filter invalid scores
+               , let (Just a) = p]             -- Unpack just
 
---      scores'' :: [(Score, Offset)]
---      scores'' = [(fromJust $ computeScore ta tb e, e) | e <- possibleOffsets ta tb, isJust $ computeScore ta tb e]
-
-      --scoreCollected = sortAndGroup scores''
-      scores' = map (\(Just x, y) -> (x, y)) scores
-      scoreCollected = maximumBy (comparing fst) $ groupSort scores'
-      res | null scores' = Nothing
+      scoreCollected = maximumBy (comparing fst) $ groupSort scores
+      res | null scores = Nothing
           | otherwise = Just scoreCollected
 
-sortAndGroup assocs = M.fromListWith (++) [(k, [v]) | (k, v) <- assocs]
-
 bestOffset :: Tile -> Tile -> Maybe (Score, Offset)
-bestOffset ta tb = (\(x, y) -> (,) x (minimum y)) <$> bestOffsets ta tb
+bestOffset ta tb = (\(x, y) -> (,) x (minimum y)) <$!> bestOffsets ta tb
 
 merge :: Offset -> Tile -> Tile -> Tile
 merge (O r c) ta tb | r >= 0 && c >= 0 = tNew
