@@ -12,6 +12,18 @@ import Data.Foldable
 --------------------------------------------------------------------------------
 -- Data types
 
+compareScoreOffset :: (Ord a, Ord b) => (a,b) -> (a,b) -> Ordering
+compareScoreOffset (a1, b1) (a2, b2) | cmpA == EQ = compare b1 b2
+                                     | otherwise = cmpA
+  where
+    cmpA = compare a1 a2
+
+compareTest (_, Just x@(_, _)) (_, Just y@(_, _)) = compare x y
+
+compareTest2 :: (Score, (Tile, Tile, Offset)) -> (Score, (Tile, Tile, Offset)) -> Ordering
+compareTest2 (s, (_,_,o)) (s2, (_,_,o2)) = compare (s, o) (s2, o2)
+
+
 type Feature = Char
 
 type RawTile = [String]
@@ -104,7 +116,7 @@ showMapsPlain = intercalate "\n" . map (renderMap . toMap')
 -- Algorithm
 
 possibleOffsets :: Tile -> Tile -> [Offset]
-possibleOffsets ta tb = res --[O x y | x <- xInt, y <- yInt]
+possibleOffsets ta tb = res
    where
       ta_cols = tCols ta - 1
       ta_rows = tRows ta - 1
@@ -115,14 +127,6 @@ possibleOffsets ta tb = res --[O x y | x <- xInt, y <- yInt]
             | x <- [-(min ta_rows tb_rows)..(max ta_rows tb_rows)]
             , y <- [-(min ta_cols tb_cols)..(max ta_cols tb_cols)]
             ]
-      --xInt = [-(min ta_rows tb_rows)..(max ta_rows tb_rows)]
-      --yInt = [-(min ta_cols tb_cols)..(max ta_cols tb_cols)]
-
-psum :: Maybe Int -> Maybe Int -> Maybe Int
-psum Nothing _ = Nothing
-psum _ Nothing = Nothing
-psum (Just x) (Just y) = x `seq` y `seq` Just $ x+y
---psum _ _ = Nothing
 
 xsum :: Int -> Maybe Int -> Maybe Int
 xsum _ Nothing = Nothing
@@ -168,24 +172,13 @@ bestOffset :: Tile -> Tile -> Maybe (Score, Offset)
 bestOffset ta tb = (\(x, y) -> (,) x (minimum y)) <$!> bestOffsets ta tb
 
 merge :: Offset -> Tile -> Tile -> Tile
-merge (O r c) ta tb | r >= 0 && c >= 0 = tNew
-                    | otherwise = merge (O (abs r) (abs c)) tb ta
+merge (O r c) ta@(T c1 r1 f1) tb@(T c2 r2 f2) | r >= 0 && c >= 0 = tNew
+                                              | otherwise = merge (O (abs r) (abs c)) tb ta
    where
-      nRows = max (tRows ta) (tRows tb + r)
-      nCols = max (tCols ta) (tCols tb + c)
-      tb_features' = M.mapKeys (\(C r1 c1) -> (C (r1+r) (c1+c))) (tFeatures tb)
-      tNew = T nCols nRows (M.union (tFeatures ta) tb_features')
-
-{-
-Zwei kleine Helper, die die Auswahl der Tiles in bestMatchForTile stark vereinfacht.
--}
-compareScoreOffset :: (Ord a, Ord b) => (a,b) -> (a,b) -> Ordering
-compareScoreOffset (a1, b1) (a2, b2) | cmpA == EQ = compare b1 b2
-                                     | otherwise = cmpA
-  where
-    cmpA = compare a1 a2
-
-compareTest (_, Just x@(_, _)) (_, Just y@(_, _)) = compare x y--compareScoreOffset x y
+      nRows = max r1 (r2 + r)
+      nCols = max c1 (c2 + c)
+      tb_features' = M.mapKeys (\(C x y) -> (C (x+r) (y+c))) f2
+      tNew = T nCols nRows (M.union f1 tb_features')
 
 bestMatchForTile :: Tile -> [Tile] -> [(Score, (Tile, Tile, Offset))]
 bestMatchForTile ta tn | null comb = []
@@ -197,9 +190,6 @@ bestMatchForTile ta tn | null comb = []
       comb = filter (isJust . snd) $ zip tn $ map (bestOffset ta) tn
       maxScore = (\(s, Just (t, o)) -> (s, t, o)) $ maximumBy compareTest comb
       res = [(\(t, s, o) -> (s, (ta, t, o))) maxScore]
-
-compareTest2 :: (Score, (Tile, Tile, Offset)) -> (Score, (Tile, Tile, Offset)) -> Ordering
-compareTest2 (s, (_,_,o)) (s2, (_,_,o2)) = compare (s, o) (s2, o2)--compareScoreOffset (s, o) (s2, o2)
 
 mergeTiles :: [Tile] -> [Tile]
 mergeTiles [] = []
